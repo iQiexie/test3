@@ -10,9 +10,12 @@ import urllib.parse
 from diffusers import FluxPipeline
 from typing import List
 
+from safetensors.torch import load_file
+
 MODEL_CACHE = "./FLUX.1-dev"
 MODEL_URL = "https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/files.tar"
 CHECKPOINT_DIR = "./checkpoints"
+
 
 def download_weights(url, dest, file=False):
     start = time.time()
@@ -23,27 +26,29 @@ def download_weights(url, dest, file=False):
         subprocess.check_call(["pget", url, dest], close_fds=False)
     print(f"Download completed in {time.time() - start:.2f} seconds")
 
+
 def download_checkpoint(url, filename=None):
     """Download a checkpoint file from a URL"""
     if not os.path.exists(CHECKPOINT_DIR):
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-    
+
     if filename is None:
         # Extract filename from URL or content-disposition header
         parsed_url = urllib.parse.urlparse(url)
         filename = os.path.basename(parsed_url.path)
         if not filename or filename.endswith('/'):
             filename = f"checkpoint_{int(time.time())}.safetensors"
-    
+
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename)
-    
+
     if not os.path.exists(checkpoint_path):
         print(f"Downloading checkpoint to {checkpoint_path}")
         download_weights(url, checkpoint_path, file=True)
     else:
         print(f"Checkpoint already exists at {checkpoint_path}")
-    
+
     return checkpoint_path
+
 
 class Predictor(BasePredictor):
     def setup(self) -> None:
@@ -54,26 +59,36 @@ class Predictor(BasePredictor):
             download_weights(MODEL_URL, '.')
         else:
             print(f"Model weights found in {MODEL_CACHE}, skipping download")
-        
+
         # Create checkpoints directory if it doesn't exist
         if not os.path.exists(CHECKPOINT_DIR):
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-        
+
         # Load the model from the local directory and move it to GPU
         self.pipe = FluxPipeline.from_pretrained(
-            MODEL_CACHE, 
+            MODEL_CACHE,
             torch_dtype=torch.bfloat16
         ).to("cuda")
-        
+
         print("Model loaded successfully on GPU")
 
     def predict(
         self,
-        prompt: str = Input(description="Prompt for the model", default="a tiny astronaut hatching from an egg on the moon"),
-        checkpoint_url: str = Input(description="URL to a .safetensors checkpoint file (optional)", default=None),
-        adapter_name: str = Input(description="Name for the adapter (used when loading multiple checkpoints)", default="lora"),
-        adapter_scale: float = Input(description="Scale for the adapter weights", default=1.0, ge=0.0, le=2.0),
-        guidance_scale: float = Input(description="Guidance scale for the diffusion process", default=3.5, ge=0.0, le=20.0),
+        prompt: str = Input(
+            description="Prompt for the model", default="a tiny astronaut hatching from an egg on the moon"
+            ),
+        checkpoint_url: str = Input(
+            description="URL to a .safetensors checkpoint file (optional)", default=None
+            ),
+        adapter_name: str = Input(
+            description="Name for the adapter (used when loading multiple checkpoints)", default="lora"
+            ),
+        adapter_scale: float = Input(
+            description="Scale for the adapter weights", default=1.0, ge=0.0, le=2.0
+            ),
+        guidance_scale: float = Input(
+            description="Guidance scale for the diffusion process", default=3.5, ge=0.0, le=20.0
+            ),
         height: int = Input(description="Height of the generated image", default=1024, ge=256, le=2048),
         width: int = Input(description="Width of the generated image", default=1024, ge=256, le=2048),
         num_inference_steps: int = Input(description="Number of inference steps", default=8, ge=1, le=100),
@@ -87,24 +102,30 @@ class Predictor(BasePredictor):
             print(f"Loading checkpoint from {checkpoint_path}")
 
             # Load the model from the local directory and move it to GPU
-            self.pipe = FluxPipeline.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16, use_safetensors=True).to("cuda")
-            
-            print("Model loaded successfully on GPU")
-            
+            checkpoint = load_file(checkpoint_path)
+            missing_keys, unexpected_keys = self.pipe.transformer.load_state_dict(checkpoint, strict=False)
+
+            print(f"Missing keys: {len(missing_keys)}")
+            print(f"Unexpected keys: {len(unexpected_keys)}")
+            if len(missing_keys) > 0:
+                print("Some keys were missing. This might be expected if the checkpoint is for a specific component.")
+            if len(unexpected_keys) > 0:
+                print("Some unexpected keys were found. This might indicate a version mismatch.")
+
             # Unload any existing LoRA weights
             # if hasattr(self.pipe, 'unload_lora_weights'):
             #     self.pipe.unload_lora_weights()
-            
+
             # # Load the checkpoint as a LoRA adapter
             # self.pipe.load_lora_weights(checkpoint_path, adapter_name=adapter_name)
             # self.pipe.set_adapters([adapter_name], adapter_weights=[adapter_scale])
             # print(f"Checkpoint loaded with adapter_name={adapter_name}, scale={adapter_scale}")
-        
+
         print(f"Generating image with prompt: '{prompt}'")
-        
+
         # Set up the generator for reproducibility
         generator = torch.Generator("cuda").manual_seed(seed)
-        
+
         # Generate the image with the provided parameters
         out = self.pipe(
             prompt=prompt,
@@ -115,11 +136,11 @@ class Predictor(BasePredictor):
             max_sequence_length=max_sequence_length,
             generator=generator,
         ).images[0]
-        
+
         # Save the output image
         output_path = "flux_output.png"
         out.save(output_path)
         print(f"Image generated and saved as {output_path}")
-        
+
         # Return the path to the generated image
         return [Path(output_path)]
