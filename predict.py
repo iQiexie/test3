@@ -1,6 +1,5 @@
 # Prediction interface for Cog ⚙️
 # https://github.com/replicate/cog/blob/main/docs/python.md
-import hashlib
 
 from cog import BasePredictor, Path, Input
 import os
@@ -34,7 +33,7 @@ def download_checkpoint(url, filename=None):
     if not os.path.exists(CHECKPOINT_DIR):
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-    filename = f"checkpoint_{hashlib.sha1(url)[:16]}.safetensors"
+    filename = f"checkpoint_{int(time.time())}.safetensors"
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename)
 
     if not os.path.exists(checkpoint_path):
