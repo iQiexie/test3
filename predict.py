@@ -76,7 +76,7 @@ class Predictor(BasePredictor):
         guidance_scale: float = Input(description="Guidance scale for the diffusion process", default=3.5, ge=0.0, le=20.0),
         height: int = Input(description="Height of the generated image", default=1024, ge=256, le=2048),
         width: int = Input(description="Width of the generated image", default=1024, ge=256, le=2048),
-        num_inference_steps: int = Input(description="Number of inference steps", default=50, ge=1, le=100),
+        num_inference_steps: int = Input(description="Number of inference steps", default=8, ge=1, le=100),
         max_sequence_length: int = Input(description="Maximum sequence length", default=512, ge=256, le=1024),
         seed: int = Input(description="Random seed for reproducibility", default=0),
     ) -> List[Path]:
@@ -85,15 +85,20 @@ class Predictor(BasePredictor):
         if checkpoint_url:
             checkpoint_path = download_checkpoint(checkpoint_url)
             print(f"Loading checkpoint from {checkpoint_path}")
+
+            # Load the model from the local directory and move it to GPU
+            self.pipe = FluxPipeline.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16, use_safetensors=True).to("cuda")
+            
+            print("Model loaded successfully on GPU")
             
             # Unload any existing LoRA weights
-            if hasattr(self.pipe, 'unload_lora_weights'):
-                self.pipe.unload_lora_weights()
+            # if hasattr(self.pipe, 'unload_lora_weights'):
+            #     self.pipe.unload_lora_weights()
             
-            # Load the checkpoint as a LoRA adapter
-            self.pipe.load_lora_weights(checkpoint_path, adapter_name=adapter_name)
-            self.pipe.set_adapters([adapter_name], adapter_weights=[adapter_scale])
-            print(f"Checkpoint loaded with adapter_name={adapter_name}, scale={adapter_scale}")
+            # # Load the checkpoint as a LoRA adapter
+            # self.pipe.load_lora_weights(checkpoint_path, adapter_name=adapter_name)
+            # self.pipe.set_adapters([adapter_name], adapter_weights=[adapter_scale])
+            # print(f"Checkpoint loaded with adapter_name={adapter_name}, scale={adapter_scale}")
         
         print(f"Generating image with prompt: '{prompt}'")
         
