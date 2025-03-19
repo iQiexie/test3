@@ -32,27 +32,32 @@ class Predictor(BasePredictor):
         else:
             print(f"Model weights found in {MODEL_CACHE}, skipping download")
         
-        # Load the model from the local directory
-        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16)
+        # Load the model from the downloaded weights and move it to GPU
+        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16).to("cuda")
         
-        # Apply memory optimizations
-        self.pipe.enable_sequential_cpu_offload()  # More aggressive memory optimization
+        # Apply memory optimizations that don't use CPU
         self.pipe.vae.enable_slicing()  # Enable VAE slicing
         self.pipe.vae.enable_tiling()  # Enable VAE tiling
+        print("Model loaded successfully on GPU")
 
     def predict(self) -> List[Path]:
         """Run a single prediction on the model"""
         # Define the prompt
         prompt = "a tiny astronaut hatching from an egg on the moon"
+        print(f"Generating image with prompt: '{prompt}'")
+
+        # Ensure the pipeline is on GPU
+        self.pipe = self.pipe.to("cuda")
         
         # Generate the image with reduced resolution and fewer steps
-        out = self.pipe(
-            prompt=prompt,
-            guidance_scale=3.5,
-            height=512,  # Reduced height
-            width=768,   # Reduced width
-            num_inference_steps=20,  # Fewer steps
-        ).images[0]
+        with torch.cuda.amp.autocast():  # Use automatic mixed precision for better GPU performance
+            out = self.pipe(
+                prompt=prompt,
+                guidance_scale=3.5,
+                height=512,  # Reduced height
+                width=768,   # Reduced width
+                num_inference_steps=8,  # Fewer steps
+            ).images[0]
         
         # Save the output image
         output_path = "flux_output.png"
