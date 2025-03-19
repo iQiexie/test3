@@ -25,7 +25,7 @@ def download_weights(url, dest, file=False):
     print(f"Download completed in {time.time() - start:.2f} seconds")
 
 
-def download_checkpoint(url, filename=None):
+def download_checkpoint(url):
     """Download a checkpoint file from a URL"""
     if not os.path.exists(CHECKPOINT_DIR):
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
