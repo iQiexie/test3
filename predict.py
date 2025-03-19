@@ -16,6 +16,7 @@ from safetensors.torch import load_file
 
 MODEL_CACHE = "./FLUX.1-dev"
 MODEL_URL = "https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/files.tar"
+DEFAULT_CHECKPOINT = "https://civitai.com/api/download/models/819165?type=Model&format=SafeTensor&size=full&fp=nf4&token=18b51174c4d9ae0451a3dedce1946ce3"
 CHECKPOINT_DIR = "./checkpoints"
 
 
@@ -61,7 +62,13 @@ class Predictor(BasePredictor):
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
         # Load the model from the local directory and move it to GPU
-        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16).to("cuda")
+        checkpoint_path = download_checkpoint(DEFAULT_CHECKPOINT)
+        transformer = FluxTransformer2DModel.from_single_file(
+            checkpoint_path,
+            torch_dtype=torch.bfloat16,
+            token="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",
+        ).to("cuda")
+        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16, transformer=transformer).to("cuda")
 
         print("Model loaded successfully on GPU")
 
