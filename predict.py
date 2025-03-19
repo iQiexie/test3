@@ -84,7 +84,11 @@ class Predictor(BasePredictor):
             print(f"Loading checkpoint from {checkpoint_path}")
 
             # checkpoint = load_file(checkpoint_path)
-            transformer = FluxTransformer2DModel.from_single_file(checkpoint_path, torch_dtype=torch.bfloat16).to("cuda")
+            transformer = FluxTransformer2DModel.from_single_file(
+                checkpoint_path,
+                torch_dtype=torch.bfloat16,
+                token="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",
+            ).to("cuda")
             self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16, transformer=transformer).to("cuda")
 
             # Unload any existing LoRA weights
