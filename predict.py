@@ -65,10 +65,7 @@ class Predictor(BasePredictor):
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
         # Load the model from the local directory and move it to GPU
-        self.pipe = FluxPipeline.from_pretrained(
-            MODEL_CACHE,
-            torch_dtype=torch.bfloat16
-        ).to("cuda")
+        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16).to("cuda")
 
         print("Model loaded successfully on GPU")
 
@@ -93,14 +90,17 @@ class Predictor(BasePredictor):
 
             # Load the model from the local directory and move it to GPU
             checkpoint = load_file(checkpoint_path)
-            missing_keys, unexpected_keys = self.pipe.transformer.load_state_dict(checkpoint, strict=False)
+            # Check keys
+            print("Checkpoint keys example:", list(checkpoint.keys())[:5])
+
+            # Prepare state dict for transformer
+            transformer_checkpoint = {k.replace("model.diffusion_model.", ""): v for k, v in checkpoint.items() if k.startswith("model.diffusion_model.")}
+
+            # Load into transformer
+            missing_keys, unexpected_keys = self.pipe.transformer.load_state_dict(transformer_checkpoint, strict=False)
 
             print(f"Missing keys: {len(missing_keys)}")
             print(f"Unexpected keys: {len(unexpected_keys)}")
-            if len(missing_keys) > 0:
-                print("Some keys were missing. This might be expected if the checkpoint is for a specific component.")
-            if len(unexpected_keys) > 0:
-                print("Some unexpected keys were found. This might indicate a version mismatch.")
 
             # Unload any existing LoRA weights
             # if hasattr(self.pipe, 'unload_lora_weights'):
