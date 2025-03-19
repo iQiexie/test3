@@ -10,6 +10,7 @@ import urllib.parse
 from diffusers import FluxPipeline
 from typing import List
 
+from diffusers import FluxTransformer2DModel
 from safetensors.torch import load_file
 
 MODEL_CACHE = "./FLUX.1-dev"
@@ -88,19 +89,9 @@ class Predictor(BasePredictor):
             checkpoint_path = download_checkpoint(checkpoint_url)
             print(f"Loading checkpoint from {checkpoint_path}")
 
-            # Load the model from the local directory and move it to GPU
-            checkpoint = load_file(checkpoint_path)
-            # Check keys
-            print("Checkpoint keys example:", list(checkpoint.keys())[:5])
-
-            # Prepare state dict for transformer
-            transformer_checkpoint = {k.replace("model.diffusion_model.", ""): v for k, v in checkpoint.items() if k.startswith("model.diffusion_model.")}
-
-            # Load into transformer
-            missing_keys, unexpected_keys = self.pipe.transformer.load_state_dict(transformer_checkpoint, strict=False)
-
-            print(f"Missing keys: {len(missing_keys)}")
-            print(f"Unexpected keys: {len(unexpected_keys)}")
+            # checkpoint = load_file(checkpoint_path)
+            transformer = FluxTransformer2DModel.from_single_file(checkpoint_path, torch_dtype=torch.bfloat16).to("cuda")
+            self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16, transformer=transformer).to("cuda")
 
             # Unload any existing LoRA weights
             # if hasattr(self.pipe, 'unload_lora_weights'):
