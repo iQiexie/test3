@@ -1,26 +1,49 @@
 # Prediction interface for Cog ⚙️
 # https://github.com/replicate/cog/blob/main/docs/python.md
 
-from cog import BasePredictor, Path
+from cog import BasePredictor, Path, Input
 import os
 import time
 import subprocess
 import torch
+import urllib.parse
 from diffusers import FluxPipeline
 from typing import List
 
 MODEL_CACHE = "./FLUX.1-dev"
 MODEL_URL = "https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/files.tar"
+CHECKPOINT_DIR = "./checkpoints"
 
 def download_weights(url, dest, file=False):
     start = time.time()
-    print("downloading url: ", url)
-    print("downloading to: ", dest)
+    print(f"Downloading from {url} to {dest}")
     if not file:
         subprocess.check_call(["pget", "-xf", url, dest], close_fds=False)
     else:
         subprocess.check_call(["pget", url, dest], close_fds=False)
-    print("downloading took: ", time.time() - start)
+    print(f"Download completed in {time.time() - start:.2f} seconds")
+
+def download_checkpoint(url, filename=None):
+    """Download a checkpoint file from a URL"""
+    if not os.path.exists(CHECKPOINT_DIR):
+        os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    
+    if filename is None:
+        # Extract filename from URL or content-disposition header
+        parsed_url = urllib.parse.urlparse(url)
+        filename = os.path.basename(parsed_url.path)
+        if not filename or filename.endswith('/'):
+            filename = f"checkpoint_{int(time.time())}.safetensors"
+    
+    checkpoint_path = os.path.join(CHECKPOINT_DIR, filename)
+    
+    if not os.path.exists(checkpoint_path):
+        print(f"Downloading checkpoint to {checkpoint_path}")
+        download_weights(url, checkpoint_path, file=True)
+    else:
+        print(f"Checkpoint already exists at {checkpoint_path}")
+    
+    return checkpoint_path
 
 class Predictor(BasePredictor):
     def setup(self) -> None:
@@ -32,32 +55,61 @@ class Predictor(BasePredictor):
         else:
             print(f"Model weights found in {MODEL_CACHE}, skipping download")
         
-        # Load the model from the downloaded weights and move it to GPU
-        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16).to("cuda")
+        # Create checkpoints directory if it doesn't exist
+        if not os.path.exists(CHECKPOINT_DIR):
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
         
-        # Apply memory optimizations that don't use CPU
-        self.pipe.vae.enable_slicing()  # Enable VAE slicing
-        self.pipe.vae.enable_tiling()  # Enable VAE tiling
+        # Load the model from the local directory and move it to GPU
+        self.pipe = FluxPipeline.from_pretrained(
+            MODEL_CACHE, 
+            torch_dtype=torch.bfloat16
+        ).to("cuda")
+        
         print("Model loaded successfully on GPU")
 
-    def predict(self) -> List[Path]:
+    def predict(
+        self,
+        prompt: str = Input(description="Prompt for the model", default="a tiny astronaut hatching from an egg on the moon"),
+        checkpoint_url: str = Input(description="URL to a .safetensors checkpoint file (optional)", default=None),
+        adapter_name: str = Input(description="Name for the adapter (used when loading multiple checkpoints)", default="lora"),
+        adapter_scale: float = Input(description="Scale for the adapter weights", default=1.0, ge=0.0, le=2.0),
+        guidance_scale: float = Input(description="Guidance scale for the diffusion process", default=3.5, ge=0.0, le=20.0),
+        height: int = Input(description="Height of the generated image", default=1024, ge=256, le=2048),
+        width: int = Input(description="Width of the generated image", default=1024, ge=256, le=2048),
+        num_inference_steps: int = Input(description="Number of inference steps", default=50, ge=1, le=100),
+        max_sequence_length: int = Input(description="Maximum sequence length", default=512, ge=256, le=1024),
+        seed: int = Input(description="Random seed for reproducibility", default=0),
+    ) -> List[Path]:
         """Run a single prediction on the model"""
-        # Define the prompt
-        prompt = "a tiny astronaut hatching from an egg on the moon"
-        print(f"Generating image with prompt: '{prompt}'")
-
-        # Ensure the pipeline is on GPU
-        self.pipe = self.pipe.to("cuda")
+        # Download and load checkpoint if provided
+        if checkpoint_url:
+            checkpoint_path = download_checkpoint(checkpoint_url)
+            print(f"Loading checkpoint from {checkpoint_path}")
+            
+            # Unload any existing LoRA weights
+            if hasattr(self.pipe, 'unload_lora_weights'):
+                self.pipe.unload_lora_weights()
+            
+            # Load the checkpoint as a LoRA adapter
+            self.pipe.load_lora_weights(checkpoint_path, adapter_name=adapter_name)
+            self.pipe.set_adapters([adapter_name], adapter_weights=[adapter_scale])
+            print(f"Checkpoint loaded with adapter_name={adapter_name}, scale={adapter_scale}")
         
-        # Generate the image with reduced resolution and fewer steps
-        with torch.cuda.amp.autocast():  # Use automatic mixed precision for better GPU performance
-            out = self.pipe(
-                prompt=prompt,
-                guidance_scale=3.5,
-                height=512,  # Reduced height
-                width=768,   # Reduced width
-                num_inference_steps=8,  # Fewer steps
-            ).images[0]
+        print(f"Generating image with prompt: '{prompt}'")
+        
+        # Set up the generator for reproducibility
+        generator = torch.Generator("cuda").manual_seed(seed)
+        
+        # Generate the image with the provided parameters
+        out = self.pipe(
+            prompt=prompt,
+            guidance_scale=guidance_scale,
+            height=height,
+            width=width,
+            num_inference_steps=num_inference_steps,
+            max_sequence_length=max_sequence_length,
+            generator=generator,
+        ).images[0]
         
         # Save the output image
         output_path = "flux_output.png"
