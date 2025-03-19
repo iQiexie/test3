@@ -74,21 +74,11 @@ class Predictor(BasePredictor):
 
     def predict(
         self,
-        prompt: str = Input(
-            description="Prompt for the model", default="a tiny astronaut hatching from an egg on the moon"
-            ),
-        checkpoint_url: str = Input(
-            description="URL to a .safetensors checkpoint file (optional)", default=None
-            ),
-        adapter_name: str = Input(
-            description="Name for the adapter (used when loading multiple checkpoints)", default="lora"
-            ),
-        adapter_scale: float = Input(
-            description="Scale for the adapter weights", default=1.0, ge=0.0, le=2.0
-            ),
-        guidance_scale: float = Input(
-            description="Guidance scale for the diffusion process", default=3.5, ge=0.0, le=20.0
-            ),
+        prompt: str = Input(description="Prompt for the model", default="a tiny astronaut hatching from an egg on the moon"),
+        checkpoint_url: str = Input(description="URL to a .safetensors checkpoint file (optional)", default=None),
+        adapter_name: str = Input(description="Name for the adapter (used when loading multiple checkpoints)", default="lora"),
+        adapter_scale: float = Input(description="Scale for the adapter weights", default=1.0, ge=0.0, le=2.0),
+        guidance_scale: float = Input(description="Guidance scale for the diffusion process", default=3.5, ge=0.0, le=20.0),
         height: int = Input(description="Height of the generated image", default=1024, ge=256, le=2048),
         width: int = Input(description="Width of the generated image", default=1024, ge=256, le=2048),
         num_inference_steps: int = Input(description="Number of inference steps", default=8, ge=1, le=100),
