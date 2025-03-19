@@ -1,5 +1,3 @@
-# Prediction interface for Cog ⚙️
-# https://github.com/replicate/cog/blob/main/docs/python.md
 import hashlib
 
 from cog import BasePredictor, Path, Input
@@ -7,12 +5,9 @@ import os
 import time
 import subprocess
 import torch
-import urllib.parse
 from diffusers import FluxPipeline
 from typing import List
-
 from diffusers import FluxTransformer2DModel
-from safetensors.torch import load_file
 
 MODEL_CACHE = "./FLUX.1-dev"
 MODEL_URL = "https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/files.tar"
@@ -35,7 +30,7 @@ def download_checkpoint(url, filename=None):
     if not os.path.exists(CHECKPOINT_DIR):
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-    filename = f"checkpoint_{hashlib.sha1(url)[:16]}.safetensors"
+    filename = f"checkpoint_{hashlib.sha1(url.encode())[:16]}.safetensors"
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename)
 
     if not os.path.exists(checkpoint_path):
