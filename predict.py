@@ -2,15 +2,38 @@
 # https://github.com/replicate/cog/blob/main/docs/python.md
 
 from cog import BasePredictor, Path
+import os
+import time
+import subprocess
 import torch
 from diffusers import FluxPipeline
 from typing import List
 
+MODEL_CACHE = "./FLUX.1-dev"
+MODEL_URL = "https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/files.tar"
+
+def download_weights(url, dest, file=False):
+    start = time.time()
+    print("downloading url: ", url)
+    print("downloading to: ", dest)
+    if not file:
+        subprocess.check_call(["pget", "-xf", url, dest], close_fds=False)
+    else:
+        subprocess.check_call(["pget", url, dest], close_fds=False)
+    print("downloading took: ", time.time() - start)
+
 class Predictor(BasePredictor):
     def setup(self) -> None:
         """Load the model into memory to make running multiple predictions efficient"""
+        # Download model weights if they don't exist
+        if not os.path.exists(MODEL_CACHE):
+            print(f"Model weights not found in {MODEL_CACHE}, downloading...")
+            download_weights(MODEL_URL, '.')
+        else:
+            print(f"Model weights found in {MODEL_CACHE}, skipping download")
+        
         # Load the model from the local directory
-        self.pipe = FluxPipeline.from_pretrained("./FLUX.1-dev", torch_dtype=torch.bfloat16)
+        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16)
         
         # Apply memory optimizations
         self.pipe.enable_sequential_cpu_offload()  # More aggressive memory optimization
