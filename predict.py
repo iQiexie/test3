@@ -33,13 +33,7 @@ def download_checkpoint(url, filename=None):
     if not os.path.exists(CHECKPOINT_DIR):
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-    if filename is None:
-        # Extract filename from URL or content-disposition header
-        parsed_url = urllib.parse.urlparse(url)
-        filename = os.path.basename(parsed_url.path)
-        if not filename or filename.endswith('/'):
-            filename = f"checkpoint_{int(time.time())}.safetensors"
-
+    filename = f"checkpoint_{int(time.time())}.safetensors"
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename)
 
     if not os.path.exists(checkpoint_path):
