@@ -36,7 +36,6 @@ class Predictor(BasePredictor):
         self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16)
         
         # Apply memory optimizations
-        self.pipe.enable_sequential_cpu_offload()  # More aggressive memory optimization
         self.pipe.vae.enable_slicing()  # Enable VAE slicing
         self.pipe.vae.enable_tiling()  # Enable VAE tiling
 
