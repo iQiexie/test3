@@ -120,7 +120,14 @@ class Predictor(BasePredictor):
         upscaled_image_np = np.moveaxis(upscaled_image_np, 2, 0)
         upscaled_image_tensor = torch.from_numpy(upscaled_image_np).unsqueeze(0).to("cuda")
 
-        img2img_pipe = StableDiffusionImg2ImgPipeline(**self.pipe.components).to("cuda")  # Create img2img pipeline from FluxPipeline components
+        # Remove extra text encoder from components
+        components = self.pipe.components
+        components.pop("text_encoder_2", None)  # Remove if present
+        components.pop("tokenizer_2", None)  # Remove if present
+
+        # Second pass (img2img)
+        img2img_pipe = StableDiffusionImg2ImgPipeline(**components).to("cuda")
+
         out = img2img_pipe(
             prompt=prompt,
             image=upscaled_image_tensor,
