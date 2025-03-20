@@ -1,5 +1,7 @@
 import hashlib
 
+import numpy as np
+from PIL import Image
 from cog import BasePredictor, Path, Input
 import os
 import time
@@ -8,6 +10,7 @@ import torch
 from diffusers import FluxPipeline
 from typing import List
 from diffusers import FluxTransformer2DModel
+from diffusers import StableDiffusionImg2ImgPipeline
 
 MODEL_CACHE = "./FLUX.1-dev"
 MODEL_URL = "https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/files.tar"
@@ -30,7 +33,7 @@ def download_checkpoint(url):
     if not os.path.exists(CHECKPOINT_DIR):
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-    filename = f"checkpoint_{hashlib.sha1(url.encode())[:16]}.safetensors"
+    filename = f"checkpoint_{hashlib.sha1(url.encode()).hexdigest()[:16]}.safetensors"
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename)
 
     if not os.path.exists(checkpoint_path):
@@ -56,14 +59,7 @@ class Predictor(BasePredictor):
         if not os.path.exists(CHECKPOINT_DIR):
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-        # Load the model from the local directory and move it to GPU
-        checkpoint_path = download_checkpoint(DEFAULT_CHECKPOINT)
-        transformer = FluxTransformer2DModel.from_single_file(
-            checkpoint_path,
-            torch_dtype=torch.bfloat16,
-            token="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",
-        ).to("cuda")
-        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16, transformer=transformer).to("cuda")
+        self.pipe = FluxPipeline.from_pretrained(MODEL_CACHE, torch_dtype=torch.bfloat16).to("cuda")
 
         print("Model loaded successfully on GPU")
 
@@ -114,9 +110,23 @@ class Predictor(BasePredictor):
             guidance_scale=guidance_scale,
             height=height,
             width=width,
-            num_inference_steps=num_inference_steps,
+            num_inference_steps=num_inference_steps // 2,
             max_sequence_length=max_sequence_length,
             generator=generator,
+        ).images[0]
+
+        upscaled_image = out.resize((width, height), Image.LANCZOS)
+        upscaled_image_np = np.array(upscaled_image).astype(np.float32) / 255.0
+        upscaled_image_np = np.moveaxis(upscaled_image_np, 2, 0)
+        upscaled_image_tensor = torch.from_numpy(upscaled_image_np).unsqueeze(0).to("cuda")
+
+        img2img_pipe = StableDiffusionImg2ImgPipeline(**self.pipe.components).to("cuda")  # Create img2img pipeline from FluxPipeline components
+        out = img2img_pipe(
+            prompt=prompt,
+            image=upscaled_image_tensor,
+            strength=0.3,  # Denoising strength for HR pass
+            guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps // 2,  # Remaining steps
         ).images[0]
 
         # Save the output image
